@@ -1,33 +1,43 @@
+import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
-
-export type ChatMode = "competitors" | "market";
+import { Project } from "../api/client";
 
 interface SidebarProps {
-  mode: ChatMode;
-  onModeChange: (m: ChatMode) => void;
+  projects: Project[];
+  currentProjectId: number | null;
+  onSelect: (id: number) => void;
+  onCreate: (name: string) => Promise<void> | void;
+  onDelete: (id: number) => Promise<void> | void;
   onClose?: () => void;
 }
 
-const items: { id: ChatMode; title: string; desc: string; icon: string }[] = [
-  {
-    id: "competitors",
-    title: "Анализ конкурентов",
-    desc: "Кто рядом, чем сильны",
-    icon: "👥",
-  },
-  {
-    id: "market",
-    title: "Анализ рынка",
-    desc: "Размер, тренды, спрос",
-    icon: "📊",
-  },
-];
-
-export default function Sidebar({ mode, onModeChange, onClose }: SidebarProps) {
+export default function Sidebar({
+  projects,
+  currentProjectId,
+  onSelect,
+  onCreate,
+  onDelete,
+  onClose,
+}: SidebarProps) {
   const { user, logout } = useAuth();
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newName.trim();
+    if (!name) return;
+    setCreating(true);
+    try {
+      await onCreate(name);
+      setNewName("");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
-    <aside className="h-full w-full sm:w-[260px] flex-shrink-0 bg-panel border-r border-border flex flex-col">
+    <aside className="h-full w-full sm:w-[280px] flex-shrink-0 bg-panel border-r border-border flex flex-col">
       <div className="px-4 h-14 flex items-center justify-between border-b border-border">
         <div className="font-semibold tracking-tight">AVM Research</div>
         {onClose && (
@@ -41,33 +51,66 @@ export default function Sidebar({ mode, onModeChange, onClose }: SidebarProps) {
         )}
       </div>
 
-      <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
+      <div className="p-3 border-b border-border">
+        <form onSubmit={submit} className="flex gap-2">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Новый проект"
+            className="flex-1 bg-bg border border-border rounded-lg px-2 py-1.5 text-sm outline-none focus:border-accent"
+          />
+          <button
+            type="submit"
+            disabled={creating || !newName.trim()}
+            className="bg-accent hover:bg-emerald-600 disabled:opacity-50 text-white rounded-lg px-3 text-sm"
+          >
+            +
+          </button>
+        </form>
+      </div>
+
+      <nav className="p-2 space-y-1 flex-1 overflow-y-auto">
         <div className="text-xs uppercase tracking-wider text-neutral-500 px-2 pt-2 pb-1">
-          Режимы
+          Проекты
         </div>
-        {items.map((it) => {
-          const active = it.id === mode;
+        {projects.length === 0 && (
+          <div className="px-2 py-3 text-sm text-neutral-500">
+            Пока нет проектов. Создай первый.
+          </div>
+        )}
+        {projects.map((p) => {
+          const active = p.id === currentProjectId;
           return (
-            <button
-              key={it.id}
-              onClick={() => {
-                onModeChange(it.id);
-                onClose?.();
-              }}
-              className={`w-full text-left rounded-lg px-3 py-2.5 transition border ${
+            <div
+              key={p.id}
+              className={`group rounded-lg border transition flex items-center ${
                 active
                   ? "bg-neutral-100 border-neutral-200"
                   : "bg-transparent border-transparent hover:bg-neutral-50"
               }`}
             >
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{it.icon}</span>
-                <span className="font-medium text-sm">{it.title}</span>
-              </div>
-              <div className="text-xs text-neutral-500 mt-0.5 ml-7">
-                {it.desc}
-              </div>
-            </button>
+              <button
+                onClick={() => onSelect(p.id)}
+                className="flex-1 text-left px-3 py-2 min-w-0"
+              >
+                <div className="font-medium text-sm truncate">{p.name}</div>
+                <div className="text-xs text-neutral-500">
+                  {new Date(p.updated_at).toLocaleDateString()}
+                </div>
+              </button>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (confirm(`Удалить проект «${p.name}»?`)) {
+                    await onDelete(p.id);
+                  }
+                }}
+                className="opacity-0 group-hover:opacity-100 px-2 text-neutral-400 hover:text-red-600"
+                title="Удалить"
+              >
+                ×
+              </button>
+            </div>
           );
         })}
       </nav>
