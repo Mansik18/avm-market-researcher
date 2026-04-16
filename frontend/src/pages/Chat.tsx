@@ -285,10 +285,16 @@ export default function Chat() {
 
             {/* Analyzing spinner */}
             {analyzing && (
-              <div className="px-4 sm:px-6 py-4 border-t border-border">
-                <div className="max-w-lg mx-auto flex items-center justify-center gap-3">
-                  <div className="w-4 h-4 border-2 border-[#1E40AF] border-t-transparent rounded-full animate-spin" />
-                  <div className="text-sm text-[#1E40AF]">Анализирую рынок (1-3 мин)…</div>
+              <div className="px-4 sm:px-6 py-6 border-t border-border bg-[#1E40AF]/5">
+                <div className="max-w-lg mx-auto text-center">
+                  <div className="flex items-center justify-center gap-3 mb-2">
+                    <div className="w-5 h-5 border-2 border-[#1E40AF] border-t-transparent rounded-full animate-spin" />
+                    <div className="text-base font-medium text-[#1E40AF]">Анализирую рынок</div>
+                  </div>
+                  <div className="text-sm text-neutral-700">
+                    Сбор данных → Сегментация → Глубокий анализ → Синтез
+                  </div>
+                  <div className="text-sm text-neutral-500 mt-1">Обычно занимает 1-3 минуты, не закрывай вкладку</div>
                 </div>
               </div>
             )}
@@ -306,7 +312,7 @@ export default function Chat() {
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 12a9 9 0 1 1-6.219-8.56"/><path d="M21 3v5h-5"/>
                       </svg>
-                      {report ? "Перезапустить анализ" : "Запустить анализ рынка"}
+                      {report ? "Перезапустить глобальный анализ рынка" : "Запустить анализ рынка"}
                     </button>
                   </div>
                 )}
