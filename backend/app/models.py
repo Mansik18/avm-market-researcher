@@ -22,6 +22,7 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
 
 class ProjectContext(Base):

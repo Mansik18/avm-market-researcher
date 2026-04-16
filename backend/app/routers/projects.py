@@ -1,5 +1,6 @@
 """Projects CRUD and context/report endpoints."""
 import json
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -18,7 +19,11 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 
 def _owned(project_id: int, user: User, db: Session) -> Project:
-    p = db.query(Project).filter(Project.id == project_id, Project.user_id == user.id).first()
+    p = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.user_id == user.id, Project.deleted_at.is_(None))
+        .first()
+    )
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
     return p
@@ -70,7 +75,7 @@ def list_projects(
 ):
     return (
         db.query(Project)
-        .filter(Project.user_id == current_user.id)
+        .filter(Project.user_id == current_user.id, Project.deleted_at.is_(None))
         .order_by(Project.updated_at.desc())
         .all()
     )
@@ -92,7 +97,7 @@ def delete_project(
     db: Session = Depends(get_db),
 ):
     p = _owned(project_id, current_user, db)
-    db.delete(p)
+    p.deleted_at = datetime.utcnow()
     db.commit()
 
 
