@@ -86,6 +86,7 @@ async def intake_turn(
             if m["role"] in ("user", "assistant")
         ][:-1] if user_text else [],
         new_user_message=user_text,
+        report_json=ctx.last_report_json or "",
     )
 
     assistant_msg = {

@@ -204,4 +204,10 @@ export const api = {
     }),
   getReport: (projectId: number) =>
     apiFetch<AnalysisReport>(`/projects/${projectId}/report`),
+  getReportVersions: (projectId: number) =>
+    apiFetch<{ versions: { version: number; created_at: string | null; current?: boolean }[] }>(
+      `/projects/${projectId}/report-versions`
+    ),
+  getReportVersion: (projectId: number, version: number) =>
+    apiFetch<AnalysisReport>(`/projects/${projectId}/report-versions/${version}`),
 };

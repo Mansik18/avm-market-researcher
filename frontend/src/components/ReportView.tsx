@@ -196,7 +196,14 @@ function SegmentCard({ s, rank }: { s: Segment; rank: number }) {
 /* ══════════════════════════════════════════════════════════════════ */
 /*  MAIN REPORT                                                     */
 /* ══════════════════════════════════════════════════════════════════ */
-export default function ReportView({ report }: { report: AnalysisReport }) {
+interface ReportViewProps {
+  report: AnalysisReport;
+  versions?: { version: number; created_at: string | null; current?: boolean }[];
+  currentVersion?: number;
+  onVersionChange?: (v: number) => void;
+}
+
+export default function ReportView({ report, versions, currentVersion, onVersionChange }: ReportViewProps) {
   const v = VERDICT_CFG[report.verdict] || VERDICT_CFG.NO_GO;
   const segmentsSorted = [...report.segments].sort((a, b) => b.total_score - a.total_score);
   const aCount = report.segments.filter((s) => s.category === "A").length;
@@ -204,6 +211,25 @@ export default function ReportView({ report }: { report: AnalysisReport }) {
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+
+      {/* ── Version selector ── */}
+      {versions && versions.length > 1 && onVersionChange && (
+        <div className="flex items-center gap-3">
+          <label htmlFor="report-version" className="text-sm text-neutral-500">Версия отчёта:</label>
+          <select
+            id="report-version"
+            value={currentVersion ?? versions[versions.length - 1]?.version}
+            onChange={(e) => onVersionChange(Number(e.target.value))}
+            className="text-sm bg-white border border-neutral-200 rounded-lg px-3 py-1.5 cursor-pointer focus:border-[#3B82F6] outline-none"
+          >
+            {versions.map((v) => (
+              <option key={v.version} value={v.version}>
+                v{v.version}{v.current ? " (текущая)" : ""}{v.created_at ? ` — ${new Date(v.created_at).toLocaleString("ru-RU")}` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* ── Verdict hero ── */}
       <div className={`${v.bg} ${v.border} border-2 rounded-2xl p-6 shadow-sm`}>

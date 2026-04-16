@@ -62,6 +62,29 @@ class IntakeTurnResult:
     summary: str
 
 
+def _discussion_prompt(report_json: str) -> str:
+    return f"""# Режим обсуждения результатов анализа
+
+Ты — продуктовый аналитик. Пользователь уже прошёл интервью и получил отчёт по анализу рынка. Теперь он хочет обсудить результаты, задать вопросы, уточнить выводы.
+
+## Твои задачи:
+- Отвечай на вопросы по результатам анализа
+- Помогай разобраться в сегментах, рисках, экономике
+- Если пользователь даёт новую информацию (новые данные о клиентах, ценах, конкурентах) — обнови контекст через update_context
+- Если новая информация существенна для выводов — предложи перезапустить анализ чтобы получить обновлённую версию отчёта
+- Будь конкретным, ссылайся на данные из отчёта
+
+## Правила:
+- Короткие ответы. 2-5 предложений. Не лекции.
+- Не повторяй весь отчёт целиком — пользователь его уже видит.
+- Если пользователь дополняет контекст — обнови update_context и скажи что изменилось.
+- Когда рекомендуешь перезапустить анализ — скажи прямо: «Рекомендую перезапустить анализ — нажми кнопку выше. Новая версия учтёт эти данные.»
+
+## Текущий отчёт (для справки):
+{report_json[:12000]}
+"""
+
+
 def _merge_context(current: ContextData, incoming: dict) -> ContextData:
     """Apply LLM-provided updates to current context, preserving known values
     when the LLM sends empties (common failure mode: tool_choice forces a full
@@ -84,10 +107,16 @@ async def run_intake_turn(
     current_context: ContextData,
     history: list[dict],
     new_user_message: str,
+    report_json: str = "",
 ) -> IntakeTurnResult:
     """Run one intake dialogue turn. `history` is the conversation BEFORE
-    `new_user_message` was added."""
-    skill_body = load_skill("intake")
+    `new_user_message` was added.
+
+    If `report_json` is provided, switches to discussion mode: the agent
+    helps the user understand and refine the analysis results instead of
+    asking intake questions."""
+    has_report = bool(report_json)
+    skill_body = load_skill("intake") if not has_report else _discussion_prompt(report_json)
 
     is_first = len(history) == 0 and not new_user_message.strip()
     if is_first:

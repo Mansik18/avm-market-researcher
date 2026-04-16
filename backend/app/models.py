@@ -38,7 +38,9 @@ class ProjectContext(Base):
     completeness: Mapped[float] = mapped_column(Float, default=0.0)
     ready_for_analysis: Mapped[bool] = mapped_column(Boolean, default=False)
     summary: Mapped[str] = mapped_column(Text, default="")
-    # Last market analysis report (AnalysisReport JSON) — empty until analysis run
+    # Current active report (AnalysisReport JSON) — empty until analysis run
     last_report_json: Mapped[str] = mapped_column(Text, default="")
     last_report_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # All report versions: JSON array of {version, report, created_at}
+    report_history_json: Mapped[str] = mapped_column(Text, default="[]")
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

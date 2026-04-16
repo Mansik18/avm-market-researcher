@@ -1,4 +1,4 @@
-"""Market analysis endpoint — synchronous, ~1-3 minutes per call."""
+"""Market analysis endpoint with report versioning."""
 import json
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,7 +17,11 @@ router = APIRouter(tags=["analysis"])
 
 
 def _owned(project_id: int, user: User, db: Session) -> Project:
-    p = db.query(Project).filter(Project.id == project_id, Project.user_id == user.id).first()
+    p = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.user_id == user.id, Project.deleted_at.is_(None))
+        .first()
+    )
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
     return p
@@ -34,7 +38,6 @@ async def analyze(
     if not ctx_row:
         raise HTTPException(status_code=409, detail="Project has no context yet")
     ctx = ContextData(**(json.loads(ctx_row.data_json) if ctx_row.data_json else {}))
-    # Minimum viable context check — we need at least a description and audience
     if not ctx.description or not ctx.audience:
         raise HTTPException(
             status_code=409,
@@ -52,9 +55,73 @@ async def analyze(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {type(e).__name__}: {e}")
 
-    # Persist as project's last report
+    # Push old report to history (if exists)
+    history: list = json.loads(ctx_row.report_history_json or "[]")
+    if ctx_row.last_report_json:
+        old_version = len(history) + 1
+        history.append({
+            "version": old_version,
+            "report": json.loads(ctx_row.last_report_json),
+            "created_at": ctx_row.last_report_at.isoformat() if ctx_row.last_report_at else None,
+        })
+        ctx_row.report_history_json = json.dumps(history, ensure_ascii=False)
+
+    # Save new report as current
     ctx_row.last_report_json = report.model_dump_json()
     ctx_row.last_report_at = datetime.utcnow()
     db.commit()
 
     return report
+
+
+@router.get("/projects/{project_id}/report-versions")
+def get_report_versions(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Returns list of all report versions including current."""
+    _owned(project_id, current_user, db)
+    ctx = db.query(ProjectContext).filter_by(project_id=project_id).first()
+    if not ctx:
+        return {"versions": []}
+
+    history: list = json.loads(ctx.report_history_json or "[]")
+    versions = []
+    for h in history:
+        versions.append({
+            "version": h["version"],
+            "created_at": h.get("created_at"),
+        })
+    # Add current as latest version
+    if ctx.last_report_json:
+        versions.append({
+            "version": len(history) + 1,
+            "created_at": ctx.last_report_at.isoformat() if ctx.last_report_at else None,
+            "current": True,
+        })
+    return {"versions": versions}
+
+
+@router.get("/projects/{project_id}/report-versions/{version}")
+def get_report_version(
+    project_id: int,
+    version: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Returns a specific report version."""
+    _owned(project_id, current_user, db)
+    ctx = db.query(ProjectContext).filter_by(project_id=project_id).first()
+    if not ctx:
+        raise HTTPException(status_code=404, detail="No reports")
+
+    history: list = json.loads(ctx.report_history_json or "[]")
+    current_version = len(history) + 1
+
+    if version == current_version and ctx.last_report_json:
+        return json.loads(ctx.last_report_json)
+    for h in history:
+        if h["version"] == version:
+            return h["report"]
+    raise HTTPException(status_code=404, detail="Version not found")
