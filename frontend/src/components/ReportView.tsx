@@ -51,35 +51,13 @@ const HEALTH_CFG: Record<string, { color: string; label: string }> = {
 
 /* ── Score axis explanations ── */
 const SCORE_AXES = [
-  {
-    key: "job_fit",
-    label: "Попадание в боль",
-    weight: "40%",
-    short: "Насколько точно продукт решает реальную проблему этого сегмента",
-    color: "#1E40AF",
-  },
-  {
-    key: "market_size",
-    label: "Размер рынка",
-    weight: "25%",
-    short: "Сколько людей с этой проблемой готовы платить (считается снизу вверх: кол-во × цена)",
-    color: "#3B82F6",
-  },
-  {
-    key: "economics",
-    label: "Экономика",
-    weight: "25%",
-    short: "Отношение прибыли с клиента к стоимости его привлечения (LTV/CAC)",
-    color: "#6366F1",
-  },
-  {
-    key: "moat",
-    label: "Защитимость",
-    weight: "10%",
-    short: "Есть ли у продукта что-то, что конкуренты не смогут скопировать за 3 месяца",
-    color: "#8B5CF6",
-  },
+  { key: "job_fit", label: "Попадание в боль", color: "#1E40AF" },
+  { key: "market_size", label: "Размер рынка", color: "#3B82F6" },
+  { key: "economics", label: "Экономика", color: "#6366F1" },
+  { key: "moat", label: "Конкурентное преимущество", color: "#8B5CF6" },
 ];
+
+const SCORE_TOOLTIP = "Оценка по 4 факторам (0-100):\n• Попадание в боль — решает ли реальную проблему\n• Размер рынка — сколько людей готовы платить\n• Экономика — сходится ли юнит-экономика\n• Конкурентное преимущество — есть ли то, что сложно скопировать";
 
 /* ── Helpers ── */
 function Section({ title, icon, children, defaultOpen = true }: {
@@ -129,19 +107,13 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 /* ── Score bar with label ── */
 function ScoreBar({ axis, value }: { axis: typeof SCORE_AXES[number]; value: number }) {
   return (
-    <div className="group relative">
+    <div>
       <div className="flex items-center justify-between text-xs mb-1">
-        <span className="text-neutral-600">{axis.label} <span className="text-neutral-400">({axis.weight})</span></span>
+        <span className="text-neutral-600">{axis.label}</span>
         <span className="font-semibold" style={{ color: axis.color }}>{Math.round(value)}</span>
       </div>
       <div className="h-2 rounded-full bg-neutral-100 overflow-hidden">
         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${value}%`, background: axis.color }} />
-      </div>
-      {/* Tooltip on hover */}
-      <div className="absolute bottom-full left-0 right-0 mb-1 hidden group-hover:block z-10">
-        <div className="bg-neutral-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg">
-          {axis.short}
-        </div>
       </div>
     </div>
   );
@@ -166,7 +138,8 @@ function SegmentCard({ s, rank }: { s: Segment; rank: number }) {
         <span className="flex-1 min-w-0 font-medium text-sm truncate" style={{ color: C.text }}>
           {s.name}
         </span>
-        <span className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full border ${cat.bg}`}>
+        <span className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full border ${cat.bg}`}
+          title={SCORE_TOOLTIP}>
           {Math.round(s.total_score)} · {s.category}
         </span>
         <span className={`shrink-0 text-xs ${health.color}`}>
@@ -278,50 +251,7 @@ export default function ReportView({ report }: { report: AnalysisReport }) {
         </Section>
       )}
 
-      {/* ── Scoring explanation ── */}
-      {segmentsSorted.length > 0 && (
-        <Section
-          title="Как читать оценки сегментов"
-          icon="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
-          defaultOpen={false}
-        >
-          <div className="space-y-3 text-sm text-neutral-700">
-            <p>
-              Каждый сегмент оценивается по <strong>4 осям</strong> от 0 до 100.
-              Итоговый балл = взвешенная сумма. Если экономика не сходится (LTV/CAC &lt; 1) — сегмент автоматически получает категорию C, сколько бы баллов ни набрал.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {SCORE_AXES.map((a) => (
-                <div key={a.key} className="bg-neutral-50 rounded-xl p-3 border border-neutral-100">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-3 h-3 rounded-full" style={{ background: a.color }} />
-                    <span className="font-medium text-neutral-800">{a.label}</span>
-                    <span className="text-xs text-neutral-400">×{a.weight}</span>
-                  </div>
-                  <p className="text-xs text-neutral-600">{a.short}</p>
-                </div>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-4 pt-2">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-[10px] font-bold">A</span>
-                ≥70 — приоритет, идти сейчас
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center text-[10px] font-bold">B</span>
-                50-69 — второй эшелон
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="w-5 h-5 rounded-full bg-neutral-100 text-neutral-600 flex items-center justify-center text-[10px] font-bold">C</span>
-                &lt;50 или LTV/CAC&lt;1 — отложить
-              </div>
-            </div>
-            <p className="text-xs text-neutral-500 pt-1">
-              <strong>LTV/CAC</strong> — сколько прибыли приносит клиент за всё время (LTV) на каждый рубль потраченный на его привлечение (CAC). Выше 3 — здоровая экономика. Ниже 1 — бизнес теряет деньги на каждом клиенте.
-            </p>
-          </div>
-        </Section>
-      )}
+      {/* Scoring info lives in the tooltip on each segment's score badge */}
 
       {/* ── Segments ── */}
       {segmentsSorted.length > 0 && (
