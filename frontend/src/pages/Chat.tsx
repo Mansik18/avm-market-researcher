@@ -303,7 +303,7 @@ export default function Chat() {
             {!analyzing && (
               <div className="border-t border-border">
                 {/* Analyze button — visible when context ready, always re-runnable */}
-                {context && context.ready_for_analysis && (
+                {context && (context.ready_for_analysis || report) && (
                   <div className="px-3 sm:px-6 pt-3 flex justify-center">
                     <button
                       onClick={runAnalysis}
