@@ -11,7 +11,9 @@ Returns a fully-populated AnalysisReport. Takes ~60-180 seconds end-to-end.
 """
 import asyncio
 import json
+import logging
 import re
+import time
 from datetime import datetime
 from typing import Any, Callable
 
@@ -27,6 +29,8 @@ from .llm import LLMClient
 from .scoring import categorize, compute_unit_economics, score_segment
 from .skills import load_skill
 
+
+log = logging.getLogger("analysis")
 
 ProgressCb = Callable[[str, str], None]  # (phase_id, human-readable label)
 
@@ -302,12 +306,17 @@ async def run_market_analysis(
             progress(pid, label)
 
     skill_body = load_skill("full-analysis")
+    t_start = time.monotonic()
 
     _p("market_research", "Собираю данные через Exa")
+    t0 = time.monotonic()
     competitors, market_facts = await _phase1(llm, exa, skill_body, ctx)
+    log.info("phase.done", extra={"phase": "market_research", "duration_ms": round((time.monotonic() - t0) * 1000)})
 
     _p("segmentation", "Строю сегменты")
+    t0 = time.monotonic()
     segments = await _phase2(llm, skill_body, ctx, competitors, market_facts)
+    log.info("phase.done", extra={"phase": "segmentation", "duration_ms": round((time.monotonic() - t0) * 1000)})
     if not segments:
         return AnalysisReport(
             verdict="NO_GO",
@@ -317,15 +326,19 @@ async def run_market_analysis(
         )
 
     _p("deep_dive", "Глубокий анализ топ-5")
+    t0 = time.monotonic()
     top = segments[:5]
     deep_dives = await asyncio.gather(
         *[_phase3_one_segment(llm, skill_body, ctx, s, competitors) for s in top]
     )
     scored_top = [_apply_deep_dive(s, dd) for s, dd in zip(top, deep_dives)]
     all_segments = scored_top + segments[5:]
+    log.info("phase.done", extra={"phase": "deep_dive", "duration_ms": round((time.monotonic() - t0) * 1000)})
 
     _p("synthesis", "Финальный синтез")
+    t0 = time.monotonic()
     synthesis = await _phase4(llm, skill_body, ctx, scored_top, competitors, market_facts)
+    log.info("phase.done", extra={"phase": "synthesis", "duration_ms": round((time.monotonic() - t0) * 1000)})
 
     risks: list[Risk] = []
     for r in synthesis.get("top_risks", []) or []:
@@ -333,6 +346,12 @@ async def run_market_analysis(
             risks.append(Risk(**r))
         except Exception:
             continue
+
+    total_duration = round((time.monotonic() - t_start) * 1000)
+    log.info("analysis.complete", extra={
+        "duration_ms": total_duration,
+        "phase": "all",
+    })
 
     return AnalysisReport(
         verdict=synthesis.get("verdict", "NO_GO") or "NO_GO",

@@ -1,14 +1,23 @@
-"""OpenAI-compatible LLM client (points at the proxy configured in .env).
+"""OpenAI-compatible LLM client with structured logging.
 
-Thin wrapper around the openai AsyncOpenAI client with two helpers we actually
-use from services: `complete_text` (single-shot, returns a string) and
-`complete_with_tool` (single-shot with one function-calling tool, returns
-both visible text and the parsed tool arguments).
+Every LLM call logs: model, tokens (in/out/total), estimated cost, duration.
 """
 import json
+import logging
+import time
 from openai import AsyncOpenAI
 
 from ..config import settings
+
+log = logging.getLogger("llm")
+
+# Rough token pricing (USD per 1K tokens) — adjust to your proxy's actual cost
+TOKEN_PRICE_IN = 0.005   # per 1K input tokens
+TOKEN_PRICE_OUT = 0.015  # per 1K output tokens
+
+
+def _estimate_cost(tokens_in: int, tokens_out: int) -> float:
+    return (tokens_in / 1000 * TOKEN_PRICE_IN) + (tokens_out / 1000 * TOKEN_PRICE_OUT)
 
 
 class LLMClient:
@@ -27,6 +36,7 @@ class LLMClient:
         user: str,
         max_tokens: int = 4096,
     ) -> str:
+        t0 = time.monotonic()
         resp = await self._client.chat.completions.create(
             model=self._model,
             max_tokens=max_tokens,
@@ -35,6 +45,22 @@ class LLMClient:
                 {"role": "user", "content": user},
             ],
         )
+        duration = round((time.monotonic() - t0) * 1000)
+        usage = resp.usage
+        tokens_in = usage.prompt_tokens if usage else 0
+        tokens_out = usage.completion_tokens if usage else 0
+        tokens_total = tokens_in + tokens_out
+        cost = _estimate_cost(tokens_in, tokens_out)
+
+        log.info("llm.complete_text", extra={
+            "model": resp.model or self._model,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "tokens_total": tokens_total,
+            "cost_usd": round(cost, 5),
+            "duration_ms": duration,
+        })
+
         return (resp.choices[0].message.content or "").strip()
 
     async def complete_with_tool(
@@ -50,6 +76,8 @@ class LLMClient:
         """Returns {"text": str, "tool_input": dict | None}."""
         full_messages: list[dict] = [{"role": "system", "content": system}]
         full_messages.extend(messages)
+
+        t0 = time.monotonic()
         resp = await self._client.chat.completions.create(
             model=self._model,
             max_tokens=max_tokens,
@@ -64,6 +92,22 @@ class LLMClient:
             }],
             tool_choice={"type": "function", "function": {"name": tool_name}},
         )
+        duration = round((time.monotonic() - t0) * 1000)
+        usage = resp.usage
+        tokens_in = usage.prompt_tokens if usage else 0
+        tokens_out = usage.completion_tokens if usage else 0
+        tokens_total = tokens_in + tokens_out
+        cost = _estimate_cost(tokens_in, tokens_out)
+
+        log.info("llm.complete_with_tool", extra={
+            "model": resp.model or self._model,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "tokens_total": tokens_total,
+            "cost_usd": round(cost, 5),
+            "duration_ms": duration,
+        })
+
         msg = resp.choices[0].message
         text = (msg.content or "").strip()
         tool_input: dict | None = None
