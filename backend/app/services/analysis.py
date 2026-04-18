@@ -129,8 +129,12 @@ async def _phase1(
     for c in competitors_raw[:8]:
         try:
             competitors.append(Competitor(**c))
-        except Exception:
-            continue
+        except Exception as e:
+            log.warning("competitor.parse_error", extra={"error": str(e), "phase": "market_research"})
+            try:
+                competitors.append(Competitor(name=c.get("name", "Unknown")))
+            except Exception:
+                continue
     market_facts = {
         "trends": parsed.get("trends", []) or [],
         "non_consumers": parsed.get("non_consumers", {}) or {},
@@ -174,9 +178,24 @@ async def _phase2(
     segments: list[Segment] = []
     for s in parsed.get("segments", []) or []:
         try:
+            # Coerce numeric fields that LLM sometimes returns as strings
+            for num_field in ("tam_usd", "sam_usd", "som_usd"):
+                if num_field in s and isinstance(s[num_field], str):
+                    cleaned = re.sub(r"[^\d.]", "", s[num_field])
+                    s[num_field] = float(cleaned) if cleaned else 0
             segments.append(Segment(**s))
-        except Exception:
-            continue
+        except Exception as e:
+            log.warning("segment.parse_error", extra={
+                "error": f"{type(e).__name__}: {e}",
+                "phase": "segmentation",
+            })
+            # Try with just the required field
+            try:
+                segments.append(Segment(name=s.get("name", f"Segment {len(segments)+1}"),
+                                        struggling_moment=str(s.get("struggling_moment", "")),
+                                        core_job=str(s.get("core_job", ""))))
+            except Exception:
+                continue
     return segments
 
 
