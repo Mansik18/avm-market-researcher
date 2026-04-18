@@ -102,6 +102,7 @@ class Competitor(BaseModel):
     strengths: list[str] = []
     weaknesses: list[str] = []
     unmet_job: str = ""
+    user_quotes: list[str] = []  # real user review quotes from G2/Capterra/ProductHunt
     sources: list[Source] = []
 
 

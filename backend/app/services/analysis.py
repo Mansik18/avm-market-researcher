@@ -38,17 +38,45 @@ ProgressCb = Callable[[str, str], None]  # (phase_id, human-readable label)
 
 # ---------- Exa query builders ----------
 
+_CIS_MARKERS = {"россия", "russia", "снг", "cis", "казахстан", "kazakhstan", "беларусь",
+                 "belarus", "узбекистан", "кыргызстан", "рф", "рус", "русскоязычн", "глобально"}
+
+
+def _is_cis(geo: str) -> bool:
+    geo_lower = geo.lower()
+    return any(m in geo_lower for m in _CIS_MARKERS)
+
+
 def _build_queries(ctx: ContextData) -> list[str]:
     category = ctx.description or "product"
     geo = ctx.geography or "global"
     segment = ctx.audience or "target users"
     problem = ctx.big_job or (ctx.pain_points[0] if ctx.pain_points else "the core job to be done")
+
+    if _is_cis(geo):
+        return [
+            f"сравнение конкурентов {category} цены и позиционирование {geo} 2025 2026",
+            f"{category} объём рынка рост тренды {geo} 2025 2026",
+            f"почему {segment} не может решить {problem} и не использует существующие решения {geo}",
+            f"отзывы и жалобы на {category} что не нравится пользователям 2025 2026",
+        ]
     return [
         f"comparison of {category} competitors pricing and positioning {geo} 2026",
         f"{category} market size and growth trends {geo} 2025 2026",
         f"why {segment} struggles with {problem} and does not use existing solutions {geo}",
         f"honest reviews and complaints about {category} what users dislike 2025 2026",
     ]
+
+
+def _build_review_queries(competitor_names: list[str], is_cis: bool) -> list[str]:
+    """Build Exa queries to find real user reviews for each competitor."""
+    queries = []
+    for name in competitor_names[:5]:
+        if is_cis:
+            queries.append(f"отзывы пользователей {name} обзор плюсы минусы 2025 2026")
+        else:
+            queries.append(f"{name} user reviews pros cons G2 Capterra ProductHunt 2025 2026")
+    return queries
 
 
 # ---------- JSON extraction ----------
@@ -157,6 +185,42 @@ async def _phase1(
         "non_consumers": parsed.get("non_consumers", {}) or {},
         "tam_reasoning": parsed.get("tam_reasoning", "") or "",
     }
+    # Phase 1b: fetch real user reviews for found competitors
+    if competitors:
+        cis = _is_cis(ctx.geography or "")
+        review_queries = _build_review_queries([c.name for c in competitors], cis)
+        try:
+            review_batches = await asyncio.gather(*[exa.search(q, num_results=5) for q in review_queries])
+            # Collect review sources
+            for hits in review_batches:
+                for h in hits:
+                    if h.url and h.url not in seen_urls:
+                        seen_urls.add(h.url)
+                        all_sources.append(Source(url=h.url, title=h.title))
+            # Ask LLM to extract real user quotes per competitor
+            review_data = []
+            for q, hits in zip(review_queries, review_batches):
+                review_data.append({
+                    "query": q,
+                    "hits": [{"title": h.title, "url": h.url, "text": h.text[:1000]} for h in hits[:5]]
+                })
+            quote_prompt = (
+                "Из результатов поиска отзывов извлеки реальные цитаты пользователей для каждого конкурента.\n"
+                f"Конкуренты: {', '.join(c.name for c in competitors[:5])}\n\n"
+                f"Результаты поиска:\n{json.dumps(review_data, ensure_ascii=False)[:8000]}\n\n"
+                "Верни JSON: {\"quotes\": {\"Competitor Name\": [\"цитата 1\", \"цитата 2\"], ...}}\n"
+                "Только реальные цитаты из текста результатов. Не придумывай. Максимум 3 цитаты на конкурента."
+            )
+            raw = await llm.complete_text(system="Ты извлекаешь цитаты из отзывов пользователей.", user=quote_prompt, max_tokens=2048)
+            quotes_parsed = _parse_json(raw)
+            quotes_map = quotes_parsed.get("quotes", {}) or {}
+            for comp in competitors:
+                comp_quotes = quotes_map.get(comp.name, []) or []
+                if comp_quotes and isinstance(comp_quotes, list):
+                    comp.user_quotes = [str(q) for q in comp_quotes[:3]]
+        except Exception as e:
+            log.warning("reviews.fetch_error", extra={"error": str(e), "phase": "market_research"})
+
     return competitors, market_facts, all_sources
 
 

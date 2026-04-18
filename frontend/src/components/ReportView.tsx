@@ -418,6 +418,16 @@ export default function ReportView({ report, versions, currentVersion, onVersion
                     Что не закрывают: {c.unmet_job}
                   </div>
                 )}
+                {c.user_quotes && c.user_quotes.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    <div className="text-[10px] text-neutral-400 uppercase tracking-wide">Отзывы пользователей</div>
+                    {c.user_quotes.map((q, j) => (
+                      <div key={j} className="text-xs text-neutral-700 bg-neutral-50 rounded-lg px-2.5 py-1.5 border-l-2 border-neutral-300 italic">
+                        "{q}"
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {c.sources && c.sources.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {c.sources.map((src, j) => (

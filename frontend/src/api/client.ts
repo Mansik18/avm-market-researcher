@@ -112,6 +112,7 @@ export interface Competitor {
   strengths: string[];
   weaknesses: string[];
   unmet_job: string;
+  user_quotes: string[];
   sources: Source[];
 }
 
