@@ -90,6 +90,10 @@ class IntakeTurnOut(BaseModel):
 
 # ---------- analysis report ----------
 
+class Source(BaseModel):
+    url: str
+    title: str = ""
+
 class Competitor(BaseModel):
     name: str
     url: str = ""
@@ -98,6 +102,7 @@ class Competitor(BaseModel):
     strengths: list[str] = []
     weaknesses: list[str] = []
     unmet_job: str = ""
+    sources: list[Source] = []
 
 
 class UnitEconomics(BaseModel):
@@ -132,6 +137,8 @@ class Segment(BaseModel):
     unmet_jobs: list[str] = []
     key_message: str = ""
     main_channel: str = ""
+    devils_advocate: str = ""
+    sources: list[Source] = []
 
 
 class Risk(BaseModel):
@@ -154,6 +161,7 @@ class AnalysisReport(BaseModel):
     competitor_response: str = ""
     next_three_steps: list[str] = []
     plan_90d: list[str] = []
+    sources: list[Source] = []
     created_at: datetime | None = None
 
 

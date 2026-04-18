@@ -38,10 +38,20 @@ async def analyze(
     if not ctx_row:
         raise HTTPException(status_code=409, detail="Project has no context yet")
     ctx = ContextData(**(json.loads(ctx_row.data_json) if ctx_row.data_json else {}))
-    if not ctx.description or not ctx.audience:
+    # Pre-flight: check critical fields
+    missing: list[str] = []
+    if not ctx.description:
+        missing.append("описание продукта")
+    if not ctx.audience:
+        missing.append("аудитория")
+    if not ctx.geography:
+        missing.append("география рынка")
+    if not ctx.big_job:
+        missing.append("главная задача/боль")
+    if missing:
         raise HTTPException(
             status_code=409,
-            detail="Project context is incomplete — intake interview must provide at least description and audience",
+            detail=f"Не хватает данных для запуска анализа: {', '.join(missing)}. Дополни контекст в чате.",
         )
     if not settings.exa_api_key:
         raise HTTPException(status_code=500, detail="EXA_API_KEY is not configured on the server")

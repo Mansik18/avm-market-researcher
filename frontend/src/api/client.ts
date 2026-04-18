@@ -99,6 +99,11 @@ export interface IntakeTurnOut {
   context: ProjectContextOut;
 }
 
+export interface Source {
+  url: string;
+  title: string;
+}
+
 export interface Competitor {
   name: string;
   url: string;
@@ -107,6 +112,7 @@ export interface Competitor {
   strengths: string[];
   weaknesses: string[];
   unmet_job: string;
+  sources: Source[];
 }
 
 export interface UnitEconomics {
@@ -141,6 +147,8 @@ export interface Segment {
   unmet_jobs: string[];
   key_message: string;
   main_channel: string;
+  devils_advocate: string;
+  sources: Source[];
 }
 
 export interface Risk {
@@ -163,6 +171,7 @@ export interface AnalysisReport {
   competitor_response: string;
   next_three_steps: string[];
   plan_90d: string[];
+  sources: Source[];
   created_at: string | null;
 }
 

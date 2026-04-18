@@ -23,6 +23,7 @@ from ..schemas import (
     ContextData,
     Risk,
     Segment,
+    Source,
 )
 from .exa import ExaClient, ExaResult
 from .llm import LLMClient
@@ -103,9 +104,18 @@ async def _phase1(
     exa: ExaClient,
     skill_body: str,
     ctx: ContextData,
-) -> tuple[list[Competitor], dict]:
+) -> tuple[list[Competitor], dict, list[Source]]:
     queries = _build_queries(ctx)
     batches = await asyncio.gather(*[exa.search(q, num_results=8) for q in queries])
+
+    # Collect all unique sources from Exa results
+    seen_urls: set[str] = set()
+    all_sources: list[Source] = []
+    for hits in batches:
+        for h in hits:
+            if h.url and h.url not in seen_urls:
+                seen_urls.add(h.url)
+                all_sources.append(Source(url=h.url, title=h.title))
 
     user_prompt = (
         f"{_context_block(ctx)}\n\n"
@@ -114,7 +124,8 @@ async def _phase1(
         "Верни СТРОГО валидный JSON без какого-либо текста до или после:\n"
         "{\n"
         '  "competitors": [ { "name": "...", "url": "...", "pricing": "...", '
-        '"positioning": "...", "strengths": ["..."], "weaknesses": ["..."], "unmet_job": "..." } ],\n'
+        '"positioning": "...", "strengths": ["..."], "weaknesses": ["..."], "unmet_job": "...", '
+        '"source_urls": ["url1", "url2"] } ],\n'
         '  "trends": ["..."],\n'
         '  "non_consumers": { "description": "...", "barrier": "..." },\n'
         '  "tam_reasoning": "..."\n'
@@ -128,6 +139,12 @@ async def _phase1(
     competitors: list[Competitor] = []
     for c in competitors_raw[:8]:
         try:
+            # Convert source_urls list to Source objects
+            source_urls = c.pop("source_urls", []) or []
+            c["sources"] = [
+                Source(url=u, title="")
+                for u in source_urls if isinstance(u, str) and u.startswith("http")
+            ]
             competitors.append(Competitor(**c))
         except Exception as e:
             log.warning("competitor.parse_error", extra={"error": str(e), "phase": "market_research"})
@@ -140,7 +157,7 @@ async def _phase1(
         "non_consumers": parsed.get("non_consumers", {}) or {},
         "tam_reasoning": parsed.get("tam_reasoning", "") or "",
     }
-    return competitors, market_facts
+    return competitors, market_facts, all_sources
 
 
 async def _phase2(
@@ -225,6 +242,8 @@ async def _phase3_one_segment(
         "- margin_pct (0-100)\n"
         "- monthly_churn_pct (0-100)\n"
         "- cac (USD)\n\n"
+        "Также напиши Devil's Advocate — главный контраргумент, почему этот сегмент "
+        "может оказаться ловушкой (ложный спрос, скрытые барьеры, конкуренция за внимание).\n\n"
         "Верни СТРОГО валидный JSON:\n"
         "{\n"
         '  "segment_name": "...",\n'
@@ -232,6 +251,7 @@ async def _phase3_one_segment(
         '  "unmet_jobs": ["..."],\n'
         '  "key_message": "...",\n'
         '  "main_channel": "...",\n'
+        '  "devils_advocate": "...",\n'
         '  "scores": {"job_fit":0, "market_size":0, "economics":0, "moat":0},\n'
         '  "unit_econ_inputs": {"amppu":0, "margin_pct":0, "monthly_churn_pct":0, "cac":0}\n'
         "}"
@@ -262,6 +282,7 @@ def _apply_deep_dive(segment: Segment, dd: dict) -> Segment:
             "unmet_jobs": dd.get("unmet_jobs", segment.unmet_jobs) or segment.unmet_jobs,
             "key_message": dd.get("key_message", segment.key_message) or segment.key_message,
             "main_channel": dd.get("main_channel", segment.main_channel) or segment.main_channel,
+            "devils_advocate": dd.get("devils_advocate", "") or "",
             "score_job_fit": float(scores.get("job_fit", 0) or 0),
             "score_market_size": float(scores.get("market_size", 0) or 0),
             "score_economics": float(scores.get("economics", 0) or 0),
@@ -329,7 +350,7 @@ async def run_market_analysis(
 
     _p("market_research", "Собираю данные через Exa")
     t0 = time.monotonic()
-    competitors, market_facts = await _phase1(llm, exa, skill_body, ctx)
+    competitors, market_facts, all_sources = await _phase1(llm, exa, skill_body, ctx)
     log.info("phase.done", extra={"phase": "market_research", "duration_ms": round((time.monotonic() - t0) * 1000)})
 
     _p("segmentation", "Строю сегменты")
@@ -384,5 +405,6 @@ async def run_market_analysis(
         competitor_response=synthesis.get("competitor_response", "") or "",
         next_three_steps=synthesis.get("next_three_steps", []) or [],
         plan_90d=synthesis.get("plan_90d", []) or [],
+        sources=all_sources,
         created_at=datetime.utcnow(),
     )

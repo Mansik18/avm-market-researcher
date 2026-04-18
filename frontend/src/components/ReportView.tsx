@@ -175,6 +175,22 @@ function SegmentCard({ s, rank }: { s: Segment; rank: number }) {
             </div>
           </div>
 
+          {/* Devil's Advocate */}
+          {s.devils_advocate && (
+            <div className="mt-3 pt-3 border-t border-neutral-100">
+              <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-50 border border-red-100">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626"
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                  <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/>
+                </svg>
+                <div>
+                  <div className="text-[11px] font-medium text-red-700 uppercase tracking-wide mb-0.5">Контраргумент</div>
+                  <div className="text-xs text-red-800 leading-relaxed">{s.devils_advocate}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Unit economics */}
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs pt-3 mt-3 border-t border-neutral-100">
             <span className="text-neutral-500">
@@ -371,6 +387,17 @@ export default function ReportView({ report, versions, currentVersion, onVersion
                     Что не закрывают: {c.unmet_job}
                   </div>
                 )}
+                {c.sources && c.sources.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {c.sources.map((src, j) => (
+                      <a key={j} href={src.url} target="_blank" rel="noreferrer"
+                        className="text-[10px] text-[#3B82F6] hover:underline bg-blue-50 rounded px-1.5 py-0.5 cursor-pointer"
+                        title={src.title || src.url}>
+                        {new URL(src.url).hostname.replace("www.", "")}
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -382,6 +409,24 @@ export default function ReportView({ report, versions, currentVersion, onVersion
       {/* ══════════════════════════════════════════ */}
       {activeTab === "plan" && (
         <div className="space-y-5">
+          {/* Sources — all Exa URLs used in this analysis */}
+          {report.sources && report.sources.length > 0 && (
+            <Section title={`Источники данных (${report.sources.length})`} icon="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.21a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" defaultOpen={false}>
+              <div className="flex flex-wrap gap-1.5">
+                {report.sources.map((src, i) => {
+                  let domain = src.url;
+                  try { domain = new URL(src.url).hostname.replace("www.", ""); } catch {}
+                  return (
+                    <a key={i} href={src.url} target="_blank" rel="noreferrer"
+                      className="text-xs text-[#3B82F6] hover:underline bg-blue-50 border border-blue-100 rounded-lg px-2 py-1 cursor-pointer"
+                      title={src.title || src.url}>
+                      {domain}
+                    </a>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
           {/* Risks */}
           {report.top_risks.length > 0 && (
             <Section title={`Рискованные допущения (${report.top_risks.length})`} icon="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z">
