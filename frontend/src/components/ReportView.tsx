@@ -243,8 +243,8 @@ export default function ReportView({ report, versions, currentVersion, onVersion
           ))}
         </div>
 
-        {/* Version selector */}
-        {versions && versions.length > 1 && onVersionChange && (
+        {/* Version selector — visible when any versions exist */}
+        {versions && versions.length >= 1 && onVersionChange && (
           <select
             value={currentVersion ?? versions[versions.length - 1]?.version}
             onChange={(e) => onVersionChange(Number(e.target.value))}

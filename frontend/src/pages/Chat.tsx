@@ -160,15 +160,25 @@ export default function Chat() {
     setError(null);
     try {
       const r = await api.analyze(currentProjectId);
-      setReport(r);
-      setTab("report");
       const [ctx, v] = await Promise.all([
         api.getContext(currentProjectId),
         api.getReportVersions(currentProjectId),
       ]);
+
+      // If new report has 0 segments but there's a previous version — warn and show old
+      if (r.segments.length === 0 && v.versions.length > 1) {
+        const prevVersion = v.versions[v.versions.length - 2];
+        const prevReport = await api.getReportVersion(currentProjectId, prevVersion.version);
+        setReport(prevReport);
+        setCurrentReportVersion(prevVersion.version);
+        setError("Новый анализ не смог построить сегменты. Показываем предыдущую версию отчёта. Попробуйте уточнить контекст и запустить ещё раз.");
+      } else {
+        setReport(r);
+        setCurrentReportVersion(v.versions.find((x) => x.current)?.version);
+      }
+      setTab("report");
       setContext(ctx);
       setReportVersions(v.versions);
-      setCurrentReportVersion(v.versions.find((x) => x.current)?.version);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Анализ не удался");
     } finally {
