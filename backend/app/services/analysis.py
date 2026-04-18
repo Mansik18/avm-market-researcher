@@ -442,7 +442,10 @@ async def run_market_analysis(
             progress(pid, label)
 
     skill_body = load_skill("full-analysis")
-    knowledge = load_knowledge("unit-economics", "segmentation", "abcdx-segmentation", "mechanics")
+    knowledge = load_knowledge(
+        "unit-economics", "segmentation", "abcdx-segmentation", "mechanics",
+        "product-strategy", "value-mechanics", "do-quantitative-research",
+    )
     # Combine: knowledge as foundational context, skill as operational algorithm
     system_prompt = f"{knowledge}\n\n---\n\n{skill_body}" if knowledge else skill_body
     t_start = time.monotonic()
