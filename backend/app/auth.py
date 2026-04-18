@@ -62,3 +62,17 @@ def get_current_user(
     if not user:
         raise credentials_exc
     return user
+
+
+def get_current_user_from_token(token: str, db: Session) -> User | None:
+    """Validate a raw JWT string — for SSE endpoints where EventSource can't set headers."""
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub", "")
+        if not email:
+            return None
+        return db.query(User).filter(User.email == email).first()
+    except JWTError:
+        return None

@@ -3,8 +3,11 @@ import Sidebar from "../components/Sidebar";
 import ChatWindow, { Message } from "../components/ChatWindow";
 import MessageInput from "../components/MessageInput";
 import ReportView from "../components/ReportView";
+import EntityCanvas from "../components/EntityCanvas";
+import RunStream from "../components/RunStream";
 import {
   AnalysisReport,
+  EntityDTO,
   HistoryMessage,
   Project,
   ProjectContextOut,
@@ -28,7 +31,8 @@ export default function Chat() {
   const [currentReportVersion, setCurrentReportVersion] = useState<number | undefined>();
   const [tab, setTab] = useState<Tab>("chat");
   const [chatLoading, setChatLoading] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
+  const [activeRunId, setActiveRunId] = useState<number | null>(null);
+  const [entities, setEntities] = useState<EntityDTO[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -79,19 +83,22 @@ export default function Chat() {
           }))
         );
         if (ctx.has_report) {
-          const [r, v] = await Promise.all([
+          const [r, v, ents] = await Promise.all([
             api.getReport(currentProjectId),
             api.getReportVersions(currentProjectId),
+            api.getEntities(currentProjectId),
           ]);
           if (alive) {
             setReport(r);
             setReportVersions(v.versions);
             setCurrentReportVersion(v.versions.find((x) => x.current)?.version);
+            setEntities(ents);
           }
         } else {
           setReport(null);
           setReportVersions([]);
           setCurrentReportVersion(undefined);
+          setEntities([]);
         }
         // If there's no history yet — trigger the cold-start greeting
         if (hist.messages.length === 0) {
@@ -156,34 +163,44 @@ export default function Chat() {
 
   const runAnalysis = async () => {
     if (currentProjectId == null) return;
-    setAnalyzing(true);
     setError(null);
     try {
-      const r = await api.analyze(currentProjectId);
-      const [ctx, v] = await Promise.all([
+      const run = await api.startRun(currentProjectId);
+      setActiveRunId(run.id);
+      setTab("chat"); // stay on chat tab to show RunStream
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось запустить анализ");
+    }
+  };
+
+  const onRunComplete = async () => {
+    if (currentProjectId == null) return;
+    try {
+      const [ents, ctx, v] = await Promise.all([
+        api.getEntities(currentProjectId, activeRunId ?? undefined),
         api.getContext(currentProjectId),
         api.getReportVersions(currentProjectId),
       ]);
-
-      // If new report has 0 segments but there's a previous version — warn and show old
-      if (r.segments.length === 0 && v.versions.length > 1) {
-        const prevVersion = v.versions[v.versions.length - 2];
-        const prevReport = await api.getReportVersion(currentProjectId, prevVersion.version);
-        setReport(prevReport);
-        setCurrentReportVersion(prevVersion.version);
-        setError("Новый анализ не смог построить сегменты. Показываем предыдущую версию отчёта. Попробуйте уточнить контекст и запустить ещё раз.");
-      } else {
-        setReport(r);
-        setCurrentReportVersion(v.versions.find((x) => x.current)?.version);
-      }
-      setTab("report");
+      setEntities(ents);
       setContext(ctx);
       setReportVersions(v.versions);
+      setCurrentReportVersion(v.versions.find((x) => x.current)?.version);
+      // Also load legacy report for ReportView fallback
+      if (ctx.has_report) {
+        const r = await api.getReport(currentProjectId);
+        setReport(r);
+      }
+      setTab("report");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Анализ не удался");
+      setError(e instanceof Error ? e.message : "Ошибка загрузки результатов");
     } finally {
-      setAnalyzing(false);
+      setActiveRunId(null);
     }
+  };
+
+  const onRunError = (msg: string) => {
+    setError(msg);
+    setActiveRunId(null);
   };
 
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
@@ -293,26 +310,19 @@ export default function Chat() {
               loading={chatLoading}
             />
 
-            {/* Analyzing spinner */}
-            {analyzing && (
-              <div className="px-4 sm:px-6 py-6 border-t border-border bg-[#1E40AF]/5">
-                <div className="max-w-lg mx-auto text-center">
-                  <div className="flex items-center justify-center gap-3 mb-2">
-                    <div className="w-5 h-5 border-2 border-[#1E40AF] border-t-transparent rounded-full animate-spin" />
-                    <div className="text-base font-medium text-[#1E40AF]">Анализирую рынок</div>
-                  </div>
-                  <div className="text-sm text-neutral-700">
-                    Сбор данных → Сегментация → Глубокий анализ → Синтез
-                  </div>
-                  <div className="text-sm text-neutral-500 mt-1">Обычно занимает 1-3 минуты, не закрывай вкладку</div>
-                </div>
-              </div>
+            {/* SSE live stream — shown while run is active */}
+            {activeRunId && currentProjectId && (
+              <RunStream
+                projectId={currentProjectId}
+                runId={activeRunId}
+                onComplete={onRunComplete}
+                onError={onRunError}
+              />
             )}
 
             {/* Bottom bar: input + optional analyze button */}
-            {!analyzing && (
+            {!activeRunId && (
               <div className="border-t border-border">
-                {/* Analyze button — visible when context ready, always re-runnable */}
                 {context && (context.ready_for_analysis || report) && (
                   <div className="px-3 sm:px-6 pt-3 flex justify-center">
                     <button
@@ -336,19 +346,27 @@ export default function Chat() {
           </>
         )}
 
-        {currentProject && tab === "report" && report && (
+        {currentProject && tab === "report" && (
           <div className="flex-1 overflow-y-auto">
-            <ReportView
-              report={report}
-              versions={reportVersions}
-              currentVersion={currentReportVersion}
-              onVersionChange={async (v) => {
-                if (currentProjectId == null) return;
-                setCurrentReportVersion(v);
-                const r = await api.getReportVersion(currentProjectId, v);
-                setReport(r);
-              }}
-            />
+            {entities.length > 0 ? (
+              <EntityCanvas entities={entities} />
+            ) : report ? (
+              <ReportView
+                report={report}
+                versions={reportVersions}
+                currentVersion={currentReportVersion}
+                onVersionChange={async (v) => {
+                  if (currentProjectId == null) return;
+                  setCurrentReportVersion(v);
+                  const r = await api.getReportVersion(currentProjectId, v);
+                  setReport(r);
+                }}
+              />
+            ) : (
+              <div className="flex items-center justify-center py-20 text-neutral-500">
+                Нет отчёта. Запусти анализ.
+              </div>
+            )}
           </div>
         )}
       </main>

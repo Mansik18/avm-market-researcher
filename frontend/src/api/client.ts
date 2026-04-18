@@ -228,4 +228,42 @@ export const api = {
     ),
   getReportVersion: (projectId: number, version: number) =>
     apiFetch<AnalysisReport>(`/projects/${projectId}/report-versions/${version}`),
+
+  // --- Runs + Entities (new) ---
+  startRun: (projectId: number) =>
+    apiFetch<RunDTO>(`/projects/${projectId}/runs`, { method: "POST" }),
+  getRun: (projectId: number, runId: number) =>
+    apiFetch<RunDTO>(`/projects/${projectId}/runs/${runId}`),
+  getEntities: (projectId: number, runId?: number) => {
+    const params = runId ? `?run_id=${runId}` : "";
+    return apiFetch<EntityDTO[]>(`/projects/${projectId}/entities${params}`);
+  },
+  runStreamUrl: (projectId: number, runId: number) => {
+    const base = API_BASE || "";
+    return `${base}/projects/${projectId}/runs/${runId}/stream?token=${getToken()}`;
+  },
 };
+
+// --- Run + Entity types ---
+export interface RunDTO {
+  id: number;
+  project_id: number;
+  skill_id: string;
+  status: "pending" | "running" | "done" | "error";
+  phase: string;
+  phase_detail: string;
+  error: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EntityDTO {
+  id: number;
+  type: string;
+  name: string;
+  rank: number;
+  data: any;
+  version: number;
+  run_id: number;
+  created_at: string;
+}

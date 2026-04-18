@@ -175,6 +175,23 @@ class AnalysisReport(BaseModel):
     created_at: datetime | None = None
 
 
+# ---------- run + entity ----------
+
+class RunOut(BaseModel):
+    id: int
+    project_id: int
+    skill_id: str
+    status: str
+    phase: str
+    phase_detail: str
+    error: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # ---------- legacy (kept to avoid breaking existing chat router imports) ----------
 
 class ChatMessageIn(BaseModel):
