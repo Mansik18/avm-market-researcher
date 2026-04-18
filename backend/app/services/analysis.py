@@ -442,22 +442,31 @@ async def run_market_analysis(
             progress(pid, label)
 
     skill_body = load_skill("full-analysis")
-    knowledge = load_knowledge(
-        "unit-economics", "segmentation", "abcdx-segmentation", "mechanics",
-        "product-strategy", "value-mechanics", "do-quantitative-research",
-    )
-    # Combine: knowledge as foundational context, skill as operational algorithm
-    system_prompt = f"{knowledge}\n\n---\n\n{skill_body}" if knowledge else skill_body
+
+    # Per-phase knowledge — only load what each phase actually needs
+    def _system(knowledge_names: list[str]) -> str:
+        kb = load_knowledge(*knowledge_names) if knowledge_names else ""
+        return f"{kb}\n\n---\n\n{skill_body}" if kb else skill_body
+
+    PHASE_KNOWLEDGE: dict[str, list[str]] = {
+        "market_research": [],                                          # pure Exa extraction, no methodology needed
+        "segmentation": ["segmentation", "abcdx-segmentation"],         # how to build segments
+        "deep_dive": ["unit-economics", "value-mechanics"],             # scoring + mechanics for each segment
+        "synthesis": ["product-strategy", "mechanics", "do-quantitative-research"],  # strategic framing + action plan
+    }
+
     t_start = time.monotonic()
 
     _p("market_research", "Собираю данные через Exa")
     t0 = time.monotonic()
-    competitors, market_facts, all_sources = await _phase1(llm, exa, system_prompt, ctx)
+    competitors, market_facts, all_sources = await _phase1(
+        llm, exa, _system(PHASE_KNOWLEDGE["market_research"]), ctx)
     log.info("phase.done", extra={"phase": "market_research", "duration_ms": round((time.monotonic() - t0) * 1000)})
 
     _p("segmentation", "Строю сегменты")
     t0 = time.monotonic()
-    segments = await _phase2(llm, system_prompt, ctx, competitors, market_facts)
+    segments = await _phase2(
+        llm, _system(PHASE_KNOWLEDGE["segmentation"]), ctx, competitors, market_facts)
     log.info("phase.done", extra={"phase": "segmentation", "duration_ms": round((time.monotonic() - t0) * 1000)})
     if not segments:
         return AnalysisReport(
@@ -470,8 +479,9 @@ async def run_market_analysis(
     _p("deep_dive", "Глубокий анализ топ-5")
     t0 = time.monotonic()
     top = segments[:5]
+    sys3 = _system(PHASE_KNOWLEDGE["deep_dive"])
     deep_dives = await asyncio.gather(
-        *[_phase3_one_segment(llm, system_prompt, ctx, s, competitors) for s in top]
+        *[_phase3_one_segment(llm, sys3, ctx, s, competitors) for s in top]
     )
     scored_top = [_apply_deep_dive(s, dd) for s, dd in zip(top, deep_dives)]
     all_segments = scored_top + segments[5:]
@@ -479,7 +489,7 @@ async def run_market_analysis(
 
     _p("synthesis", "Финальный синтез")
     t0 = time.monotonic()
-    synthesis = await _phase4(llm, system_prompt, ctx, scored_top, competitors, market_facts)
+    synthesis = await _phase4(llm, _system(PHASE_KNOWLEDGE["synthesis"]), ctx, scored_top, competitors, market_facts)
     log.info("phase.done", extra={"phase": "synthesis", "duration_ms": round((time.monotonic() - t0) * 1000)})
 
     risks: list[Risk] = []
