@@ -3,7 +3,7 @@ import { api } from "../api/client";
 
 const PHASE_LABELS: Record<string, string> = {
   starting: "Запускаю…",
-  market_research: "Ищу данные через Exa",
+  market_research: "Собираю данные",
   segmentation: "Строю сегменты",
   deep_dive: "Глубокий анализ топ-5",
   synthesis: "Синтезирую отчёт",

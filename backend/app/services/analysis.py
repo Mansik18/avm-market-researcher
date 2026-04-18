@@ -108,6 +108,9 @@ def _parse_json(raw: str) -> dict:
 
 # ---------- Phase user-message builders ----------
 
+LANG_RULE = "\n\nВАЖНО: Весь текст в JSON-ответе ДОЛЖЕН быть на русском языке. Даже если источники на английском — переводи все названия, описания, позиционирование, инсайты на русский. Исключение: имена конкурентов и URL оставляй как есть.\n"
+
+
 def _context_block(ctx: ContextData) -> str:
     return (
         "Контекст проекта:\n" + ctx.model_dump_json(indent=2)
@@ -160,6 +163,7 @@ async def _phase1(
         "}\n\n"
         "До 8 конкурентов. Только то, что реально подтверждается в результатах. "
         "Если данных нет — ставь пустые значения и пиши это в trends/tam_reasoning."
+        + LANG_RULE
     )
     raw = await llm.complete_text(system=skill_body, user=user_prompt, max_tokens=4096)
     parsed = _parse_json(raw)
@@ -211,7 +215,7 @@ async def _phase1(
                 "Верни JSON: {\"quotes\": {\"Competitor Name\": [\"цитата 1\", \"цитата 2\"], ...}}\n"
                 "Только реальные цитаты из текста результатов. Не придумывай. Максимум 3 цитаты на конкурента."
             )
-            raw = await llm.complete_text(system="Ты извлекаешь цитаты из отзывов пользователей.", user=quote_prompt, max_tokens=2048)
+            raw = await llm.complete_text(system="Ты извлекаешь цитаты из отзывов пользователей. Все цитаты переводи на русский язык.", user=quote_prompt + LANG_RULE, max_tokens=2048)
             quotes_parsed = _parse_json(raw)
             quotes_map = quotes_parsed.get("quotes", {}) or {}
             for comp in competitors:
@@ -253,6 +257,7 @@ async def _phase2(
         '    "unmet_jobs": ["..."], "key_message": "...", "main_channel": "..."\n'
         "  } ] }\n\n"
         "Поля scores и unit_econ НЕ заполняй — они будут считаться в фазе 3."
+        + LANG_RULE
     )
     raw = await llm.complete_text(system=skill_body, user=user_prompt, max_tokens=4096)
     parsed = _parse_json(raw)
@@ -327,6 +332,7 @@ async def _phase3_one_segment(
         '  "scores": {"job_fit":0, "market_size":0, "economics":0, "moat":0},\n'
         '  "unit_econ_inputs": {"amppu":0, "margin_pct":0, "monthly_churn_pct":0, "cac":0}\n'
         "}"
+        + LANG_RULE
     )
     raw = await llm.complete_text(system=skill_body, user=user_prompt, max_tokens=2048)
     return _parse_json(raw)
@@ -416,6 +422,7 @@ async def _phase4(
         "Каждый риск должен быть ФАЛЬСИФИЦИРУЕМЫМ — не 'может не взлететь', "
         "а 'мы предполагаем что X ≥ Y, если меньше — модель ломается'.\n"
         "metric: что конкретно измеряем. threshold: при каком значении гипотеза провалена."
+        + LANG_RULE
     )
     raw = await llm.complete_text(system=skill_body, user=user_prompt, max_tokens=4096)
     return _parse_json(raw)
