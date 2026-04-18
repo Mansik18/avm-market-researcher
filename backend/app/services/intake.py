@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from ..schemas import ContextData
 from .llm import LLMClient
-from .skills import load_skill
+from .skills import load_skill, load_knowledge
 
 
 UPDATE_CONTEXT_SCHEMA: dict = {
@@ -116,7 +116,12 @@ async def run_intake_turn(
     helps the user understand and refine the analysis results instead of
     asking intake questions."""
     has_report = bool(report_json)
-    skill_body = load_skill("intake") if not has_report else _discussion_prompt(report_json)
+    if has_report:
+        system_prompt = _discussion_prompt(report_json)
+    else:
+        skill_body = load_skill("intake")
+        knowledge = load_knowledge("onboarding")
+        system_prompt = f"{knowledge}\n\n---\n\n{skill_body}" if knowledge else skill_body
 
     is_first = len(history) == 0 and not new_user_message.strip()
     if is_first:
@@ -145,7 +150,7 @@ async def run_intake_turn(
     messages.append({"role": "user", "content": new_user_message})
 
     result = await llm.complete_with_tool(
-        system=skill_body,
+        system=system_prompt,
         messages=messages,
         tool_name="update_context",
         tool_description=(
