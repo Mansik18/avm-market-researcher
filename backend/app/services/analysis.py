@@ -28,7 +28,7 @@ from ..schemas import (
 from .exa import ExaClient, ExaResult
 from .llm import LLMClient
 from .scoring import categorize, compute_unit_economics, score_segment
-from .skills import load_skill
+from .skills import load_skill, load_knowledge
 
 
 log = logging.getLogger("analysis")
@@ -371,16 +371,19 @@ async def run_market_analysis(
             progress(pid, label)
 
     skill_body = load_skill("full-analysis")
+    knowledge = load_knowledge("unit-economics", "segmentation", "abcdx-segmentation", "mechanics")
+    # Combine: knowledge as foundational context, skill as operational algorithm
+    system_prompt = f"{knowledge}\n\n---\n\n{skill_body}" if knowledge else skill_body
     t_start = time.monotonic()
 
     _p("market_research", "Собираю данные через Exa")
     t0 = time.monotonic()
-    competitors, market_facts, all_sources = await _phase1(llm, exa, skill_body, ctx)
+    competitors, market_facts, all_sources = await _phase1(llm, exa, system_prompt, ctx)
     log.info("phase.done", extra={"phase": "market_research", "duration_ms": round((time.monotonic() - t0) * 1000)})
 
     _p("segmentation", "Строю сегменты")
     t0 = time.monotonic()
-    segments = await _phase2(llm, skill_body, ctx, competitors, market_facts)
+    segments = await _phase2(llm, system_prompt, ctx, competitors, market_facts)
     log.info("phase.done", extra={"phase": "segmentation", "duration_ms": round((time.monotonic() - t0) * 1000)})
     if not segments:
         return AnalysisReport(
@@ -394,7 +397,7 @@ async def run_market_analysis(
     t0 = time.monotonic()
     top = segments[:5]
     deep_dives = await asyncio.gather(
-        *[_phase3_one_segment(llm, skill_body, ctx, s, competitors) for s in top]
+        *[_phase3_one_segment(llm, system_prompt, ctx, s, competitors) for s in top]
     )
     scored_top = [_apply_deep_dive(s, dd) for s, dd in zip(top, deep_dives)]
     all_segments = scored_top + segments[5:]
@@ -402,7 +405,7 @@ async def run_market_analysis(
 
     _p("synthesis", "Финальный синтез")
     t0 = time.monotonic()
-    synthesis = await _phase4(llm, skill_body, ctx, scored_top, competitors, market_facts)
+    synthesis = await _phase4(llm, system_prompt, ctx, scored_top, competitors, market_facts)
     log.info("phase.done", extra={"phase": "synthesis", "duration_ms": round((time.monotonic() - t0) * 1000)})
 
     risks: list[Risk] = []
