@@ -114,6 +114,7 @@ class UnitEconomics(BaseModel):
     ltv_cac: float = 0
     payback_months: float = 0
     health: Literal["healthy", "moderate", "unhealthy"] = "unhealthy"
+    is_fragile: bool = False  # true if ±20% change in any input makes health unhealthy
 
 
 class Segment(BaseModel):
@@ -133,11 +134,17 @@ class Segment(BaseModel):
     score_economics: float = 0
     score_moat: float = 0
     total_score: float = 0
-    category: Literal["A", "B", "C"] = "C"
+    category: Literal["A", "B", "C", "D", "X"] = "C"
     unmet_jobs: list[str] = []
     key_message: str = ""
     main_channel: str = ""
     devils_advocate: str = ""
+    # 4 Forces of switching (0-100 each)
+    force_added_value: float = 0       # how much better than current solution
+    force_problem_severity: float = 0  # how painful is the problem
+    force_barriers: float = 0          # switching cost / friction
+    force_habit_strength: float = 0    # inertia of current behavior
+    switch_score: float = 0            # (added_value + severity) - (barriers + habits)
     sources: list[Source] = []
 
 
@@ -146,7 +153,9 @@ class Risk(BaseModel):
     probability: int = 0  # 1..5
     impact: int = 0  # 1..5
     score: int = 0
-    experiment: str = ""
+    metric: str = ""       # what to measure (e.g. "% стоматологий готовых платить $50/мес")
+    threshold: str = ""    # success/fail line (e.g. "если < 15% — модель не сходится")
+    experiment: str = ""   # how to verify in 30 days
 
 
 class AnalysisReport(BaseModel):

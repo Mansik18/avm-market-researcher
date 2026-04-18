@@ -41,6 +41,8 @@ const CAT_STYLE: Record<string, { bg: string; label: string }> = {
   A: { bg: "bg-emerald-100 text-emerald-800 border-emerald-200", label: "A — приоритет" },
   B: { bg: "bg-amber-100 text-amber-800 border-amber-200", label: "B — второй эшелон" },
   C: { bg: "bg-neutral-100 text-neutral-600 border-neutral-200", label: "C — отложить" },
+  D: { bg: "bg-purple-100 text-purple-800 border-purple-200", label: "D — нишевая ловушка" },
+  X: { bg: "bg-slate-100 text-slate-600 border-slate-200", label: "X — мало данных" },
 };
 
 const HEALTH_CFG: Record<string, { color: string; label: string }> = {
@@ -175,6 +177,30 @@ function SegmentCard({ s, rank }: { s: Segment; rank: number }) {
             </div>
           </div>
 
+          {/* 4 Forces of Switching */}
+          {(s.force_added_value > 0 || s.force_problem_severity > 0 || s.force_barriers > 0 || s.force_habit_strength > 0) && (
+            <div className="mt-3 pt-3 border-t border-neutral-100">
+              <div className="text-[11px] font-medium text-neutral-400 uppercase tracking-wide mb-2">
+                Силы переключения
+                <span className={`ml-2 font-bold ${s.switch_score >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  = {s.switch_score > 0 ? "+" : ""}{Math.round(s.switch_score)}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-emerald-50 rounded-lg p-2">
+                  <div className="text-emerald-700 font-medium mb-1">За переключение</div>
+                  <div className="flex justify-between"><span>Ценность продукта</span><span className="font-semibold">{Math.round(s.force_added_value)}</span></div>
+                  <div className="flex justify-between"><span>Острота боли</span><span className="font-semibold">{Math.round(s.force_problem_severity)}</span></div>
+                </div>
+                <div className="bg-red-50 rounded-lg p-2">
+                  <div className="text-red-700 font-medium mb-1">Против переключения</div>
+                  <div className="flex justify-between"><span>Барьеры</span><span className="font-semibold">{Math.round(s.force_barriers)}</span></div>
+                  <div className="flex justify-between"><span>Сила привычки</span><span className="font-semibold">{Math.round(s.force_habit_strength)}</span></div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Devil's Advocate */}
           {s.devils_advocate && (
             <div className="mt-3 pt-3 border-t border-neutral-100">
@@ -202,6 +228,11 @@ function SegmentCard({ s, rank }: { s: Segment; rank: number }) {
             <span className={`${health.color}`}>
               Экономика: {health.label}
             </span>
+            {s.unit_econ.is_fragile && (
+              <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded" title="При изменении ключевых параметров на ±20% модель ломается">
+                хрупкая
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -442,9 +473,15 @@ export default function ReportView({ report, versions, currentVersion, onVersion
                     </span>
                     <div className="flex-1 text-sm">
                       <div className="font-medium text-neutral-800 mb-0.5">{r.assumption}</div>
-                      <div className="text-neutral-400 text-xs mb-1.5">
+                      <div className="text-neutral-400 text-xs mb-1">
                         Вероятность: {r.probability}/5 · Последствия: {r.impact}/5
                       </div>
+                      {r.metric && (
+                        <div className="text-xs text-neutral-600 mb-1">
+                          Метрика: <strong>{r.metric}</strong>
+                          {r.threshold && <> · Порог: <strong className="text-red-600">{r.threshold}</strong></>}
+                        </div>
+                      )}
                       {r.experiment && (
                         <div className="text-xs text-[#1E40AF] bg-[#1E40AF]/5 rounded-lg px-2.5 py-1.5">
                           Как проверить: {r.experiment}

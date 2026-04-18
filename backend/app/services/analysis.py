@@ -242,6 +242,13 @@ async def _phase3_one_segment(
         "- margin_pct (0-100)\n"
         "- monthly_churn_pct (0-100)\n"
         "- cac (USD)\n\n"
+        "Оцени 4 силы переключения (0-100 каждая):\n"
+        "- added_value — насколько продукт лучше текущего решения сегмента\n"
+        "- problem_severity — насколько сильно болит проблема (срочность, частота, цена ошибки)\n"
+        "- barriers — стоимость/сложность перехода (интеграция, обучение, контракт)\n"
+        "- habit_strength — инерция текущего поведения (привычка, страх перемен)\n"
+        "Switch Score = (added_value + problem_severity) - (barriers + habit_strength). "
+        "Если < 0 — люди не переключатся даже при хорошем продукте.\n\n"
         "Также напиши Devil's Advocate — главный контраргумент, почему этот сегмент "
         "может оказаться ловушкой (ложный спрос, скрытые барьеры, конкуренция за внимание).\n\n"
         "Верни СТРОГО валидный JSON:\n"
@@ -252,6 +259,7 @@ async def _phase3_one_segment(
         '  "key_message": "...",\n'
         '  "main_channel": "...",\n'
         '  "devils_advocate": "...",\n'
+        '  "four_forces": {"added_value":0, "problem_severity":0, "barriers":0, "habit_strength":0},\n'
         '  "scores": {"job_fit":0, "market_size":0, "economics":0, "moat":0},\n'
         '  "unit_econ_inputs": {"amppu":0, "margin_pct":0, "monthly_churn_pct":0, "cac":0}\n'
         "}"
@@ -263,6 +271,7 @@ async def _phase3_one_segment(
 def _apply_deep_dive(segment: Segment, dd: dict) -> Segment:
     scores = dd.get("scores", {}) or {}
     ue_in = dd.get("unit_econ_inputs", {}) or {}
+    forces = dd.get("four_forces", {}) or {}
     ue = compute_unit_economics(
         amppu=float(ue_in.get("amppu", 0) or 0),
         margin_pct=float(ue_in.get("margin_pct", 0) or 0),
@@ -276,6 +285,13 @@ def _apply_deep_dive(segment: Segment, dd: dict) -> Segment:
         moat=float(scores.get("moat", 0) or 0),
         ltv_cac=ue.ltv_cac,
     )
+    # 4 Forces
+    f_added = float(forces.get("added_value", 0) or 0)
+    f_severity = float(forces.get("problem_severity", 0) or 0)
+    f_barriers = float(forces.get("barriers", 0) or 0)
+    f_habits = float(forces.get("habit_strength", 0) or 0)
+    switch_score = (f_added + f_severity) - (f_barriers + f_habits)
+
     return segment.model_copy(
         update={
             "switch_story": dd.get("switch_story", segment.switch_story) or segment.switch_story,
@@ -283,12 +299,17 @@ def _apply_deep_dive(segment: Segment, dd: dict) -> Segment:
             "key_message": dd.get("key_message", segment.key_message) or segment.key_message,
             "main_channel": dd.get("main_channel", segment.main_channel) or segment.main_channel,
             "devils_advocate": dd.get("devils_advocate", "") or "",
+            "force_added_value": f_added,
+            "force_problem_severity": f_severity,
+            "force_barriers": f_barriers,
+            "force_habit_strength": f_habits,
+            "switch_score": switch_score,
             "score_job_fit": float(scores.get("job_fit", 0) or 0),
             "score_market_size": float(scores.get("market_size", 0) or 0),
             "score_economics": float(scores.get("economics", 0) or 0),
             "score_moat": float(scores.get("moat", 0) or 0),
             "total_score": total,
-            "category": categorize(total),
+            "category": categorize(total, ltv_cac=ue.ltv_cac, switch_score=switch_score),
             "unit_econ": ue,
         }
     )
@@ -320,13 +341,17 @@ async def _phase4(
         '  "positioning": "Для [кто] — [продукт] — единственный способ [X] без [Y]",\n'
         '  "main_insight": "...(нетривиальный вывод, не очевидный из гугла)",\n'
         '  "asymmetric_opportunity": "...",\n'
-        '  "top_risks": [ {"assumption":"...", "probability":1, "impact":1, "score":1, '
-        '"experiment":"30-дневный эксперимент с метрикой"} ],\n'
+        '  "top_risks": [ {"assumption":"фальсифицируемая гипотеза", "probability":1, "impact":1, "score":1, '
+        '"metric":"что измерять", "threshold":"порог успеха/провала", '
+        '"experiment":"конкретный 30-дневный эксперимент"} ],\n'
         '  "competitor_response": "...",\n'
         '  "next_three_steps": ["шаг 1", "шаг 2", "шаг 3"],\n'
         '  "plan_90d": ["Месяц 1: ...", "Месяц 2: ...", "Месяц 3: ..."]\n'
         "}\n\n"
-        "top_risks: 3-5 штук, каждый со score = probability * impact (1-25)."
+        "top_risks: 8-10 штук, каждый со score = probability * impact (1-25).\n"
+        "Каждый риск должен быть ФАЛЬСИФИЦИРУЕМЫМ — не 'может не взлететь', "
+        "а 'мы предполагаем что X ≥ Y, если меньше — модель ломается'.\n"
+        "metric: что конкретно измеряем. threshold: при каком значении гипотеза провалена."
     )
     raw = await llm.complete_text(system=skill_body, user=user_prompt, max_tokens=4096)
     return _parse_json(raw)

@@ -124,6 +124,7 @@ export interface UnitEconomics {
   ltv_cac: number;
   payback_months: number;
   health: "healthy" | "moderate" | "unhealthy";
+  is_fragile: boolean;
 }
 
 export interface Segment {
@@ -143,7 +144,12 @@ export interface Segment {
   score_economics: number;
   score_moat: number;
   total_score: number;
-  category: "A" | "B" | "C";
+  category: "A" | "B" | "C" | "D" | "X";
+  force_added_value: number;
+  force_problem_severity: number;
+  force_barriers: number;
+  force_habit_strength: number;
+  switch_score: number;
   unmet_jobs: string[];
   key_message: string;
   main_channel: string;
@@ -156,6 +162,8 @@ export interface Risk {
   probability: number;
   impact: number;
   score: number;
+  metric: string;
+  threshold: string;
   experiment: string;
 }
 
