@@ -79,25 +79,127 @@ _JSON_FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
 
 def _parse_json(raw: str) -> dict:
-    """Extract a JSON object from an LLM response. Strips code fences if present."""
-    raw = raw.strip()
+    """Extract a JSON object from an LLM response (3-tier fallback).
+
+    Tier 1: parse whole response as JSON.
+    Tier 2: find outermost {...} or [...] chunk, parse that.
+    Tier 3: scan individual top-level {...} objects, parse each independently.
+            If outermost was an array — one bad item doesn't kill the whole
+            response. If outermost was an object with a list-valued field —
+            we return the raw chunks and let the caller handle per-item parsing.
+
+    Always returns a dict. If the LLM returned a top-level array, we wrap
+    it as {"_items": [...]} so callers can detect + iterate.
+    """
+    raw = (raw or "").strip()
     m = _JSON_FENCE.search(raw)
     if m:
         raw = m.group(1).strip()
     if not raw:
         return {}
+
+    # Tier 1: parse whole blob
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
+        return {"_items": parsed} if isinstance(parsed, list) else parsed
     except json.JSONDecodeError:
-        # Try to find the largest {...} chunk
-        first = raw.find("{")
-        last = raw.rfind("}")
-        if first >= 0 and last > first:
-            try:
-                return json.loads(raw[first : last + 1])
-            except json.JSONDecodeError:
-                pass
+        pass
+
+    # Tier 2: find outermost JSON chunk and parse
+    chunk = _largest_json_chunk(raw)
+    if chunk is not None:
+        try:
+            parsed = json.loads(chunk)
+            return {"_items": parsed} if isinstance(parsed, list) else parsed
+        except json.JSONDecodeError:
+            # Tier 3: if chunk is an array, scan {...} objects individually
+            if chunk.lstrip().startswith("["):
+                items = _scan_top_level_objects(chunk)
+                if items:
+                    return {"_items": items}
+
+    # Last resort: scan the whole raw string for top-level {...} objects
+    items = _scan_top_level_objects(raw)
+    if items:
+        # If exactly one object found, return it directly
+        if len(items) == 1:
+            return items[0]
+        return {"_items": items}
     return {}
+
+
+def _largest_json_chunk(s: str) -> str | None:
+    """Return the outermost {...} or [...] span in s, whichever starts earliest."""
+    first_obj = s.find("{")
+    first_arr = s.find("[")
+    candidates: list[tuple[int, str]] = []
+    if first_obj >= 0:
+        last = s.rfind("}")
+        if last > first_obj:
+            candidates.append((first_obj, s[first_obj : last + 1]))
+    if first_arr >= 0:
+        last = s.rfind("]")
+        if last > first_arr:
+            candidates.append((first_arr, s[first_arr : last + 1]))
+    if not candidates:
+        return None
+    # Pick the one that starts earlier
+    candidates.sort(key=lambda c: c[0])
+    return candidates[0][1]
+
+
+def _robust_items(value) -> list[dict]:
+    """Given a value that should be a list of dicts, recover as much as possible.
+
+    Handles:
+    - already a list → return dicts, skip non-dicts
+    - a string (malformed LLM output that came through as text) → scan {...} objects
+    - None / other → []
+    """
+    if isinstance(value, list):
+        return [v for v in value if isinstance(v, dict)]
+    if isinstance(value, str):
+        return _scan_top_level_objects(value)
+    return []
+
+
+def _scan_top_level_objects(s: str) -> list[dict]:
+    """Scan string for balanced {...} objects at depth 0 (not inside strings).
+    Returns list of successfully parsed dicts. Malformed ones are skipped.
+    """
+    out: list[dict] = []
+    depth = 0
+    start = -1
+    in_str = False
+    esc = False
+    for i, ch in enumerate(s):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            continue
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                chunk = s[start : i + 1]
+                try:
+                    parsed = json.loads(chunk)
+                    if isinstance(parsed, dict):
+                        out.append(parsed)
+                except json.JSONDecodeError:
+                    pass  # skip malformed — don't kill the batch
+                start = -1
+    return out
 
 
 # ---------- Phase user-message builders ----------
@@ -161,7 +263,10 @@ async def _phase1(
     )
     raw = await llm.complete_text(system=skill_body, user=user_prompt, max_tokens=4096)
     parsed = _parse_json(raw)
-    competitors_raw = parsed.get("competitors", []) or []
+    competitors_raw = _robust_items(parsed.get("competitors"))
+    # If top-level was an array of competitors (no wrapping dict), fall back to that
+    if not competitors_raw and "_items" in parsed:
+        competitors_raw = _robust_items(parsed["_items"])
     competitors: list[Competitor] = []
     for c in competitors_raw[:8]:
         try:
@@ -256,7 +361,10 @@ async def _phase2(
     raw = await llm.complete_text(system=skill_body, user=user_prompt, max_tokens=4096)
     parsed = _parse_json(raw)
     segments: list[Segment] = []
-    for s in parsed.get("segments", []) or []:
+    segments_raw = _robust_items(parsed.get("segments"))
+    if not segments_raw and "_items" in parsed:
+        segments_raw = _robust_items(parsed["_items"])
+    for s in segments_raw:
         try:
             # Coerce numeric fields that LLM sometimes returns as strings
             for num_field in ("tam_usd", "sam_usd", "som_usd"):
@@ -487,7 +595,7 @@ async def run_market_analysis(
     log.info("phase.done", extra={"phase": "synthesis", "duration_ms": round((time.monotonic() - t0) * 1000)})
 
     risks: list[Risk] = []
-    for r in synthesis.get("top_risks", []) or []:
+    for r in _robust_items(synthesis.get("top_risks")):
         try:
             risks.append(Risk(**r))
         except Exception:
