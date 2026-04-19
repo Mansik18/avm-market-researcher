@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..db import get_db
-from ..models import Project, ProjectContext, User
+from ..models import PendingEdit, Project, ProjectContext, User
 from ..schemas import (
     ContextData,
     IntakeTurnIn,
@@ -104,6 +104,21 @@ async def intake_turn(
     if result.summary:
         ctx.summary = result.summary
     project.updated_at = datetime.utcnow()  # bump so projects list re-orders
+
+    # Discussion-mode: stage any agent-proposed edits for user approval
+    if result.proposed_edits:
+        for pe in result.proposed_edits:
+            db.add(PendingEdit(
+                project_id=project.id,
+                target="context",
+                field=pe.field,
+                old_value_json=json.dumps(pe.old_value, ensure_ascii=False),
+                new_value_json=json.dumps(pe.new_value, ensure_ascii=False),
+                reason=result.reply_text[:500],
+                status="pending",
+                created_at=datetime.utcnow(),
+            ))
+
     db.commit()
     db.refresh(ctx)
 

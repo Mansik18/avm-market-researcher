@@ -242,7 +242,28 @@ export const api = {
     const base = API_BASE || "";
     return `${base}/projects/${projectId}/runs/${runId}/stream?token=${getToken()}`;
   },
+
+  // --- Pending edits (agent proposals) ---
+  listPendingEdits: (projectId: number) =>
+    apiFetch<PendingEditDTO[]>(`/projects/${projectId}/pending-edits?status=pending`),
+  approveEdit: (projectId: number, editId: number) =>
+    apiFetch<PendingEditDTO>(`/projects/${projectId}/pending-edits/${editId}/approve`, { method: "POST" }),
+  rejectEdit: (projectId: number, editId: number) =>
+    apiFetch<PendingEditDTO>(`/projects/${projectId}/pending-edits/${editId}/reject`, { method: "POST" }),
 };
+
+export interface PendingEditDTO {
+  id: number;
+  project_id: number;
+  target: string;
+  field: string;
+  old_value: any;
+  new_value: any;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+  resolved_at: string | null;
+}
 
 // --- Run + Entity types ---
 export interface RunDTO {

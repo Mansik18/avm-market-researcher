@@ -28,7 +28,7 @@ from ..schemas import (
 from .exa import ExaClient, ExaResult
 from .llm import LLMClient
 from .scoring import categorize, compute_unit_economics, score_segment
-from .skills import load_skill, load_knowledge
+from .skills import load_skill, load_knowledge, load_skill_queries, render_query_group
 
 
 log = logging.getLogger("analysis")
@@ -47,35 +47,29 @@ def _is_cis(geo: str) -> bool:
     return any(m in geo_lower for m in _CIS_MARKERS)
 
 
-def _build_queries(ctx: ContextData) -> list[str]:
-    category = ctx.description or "product"
-    geo = ctx.geography or "global"
-    segment = ctx.audience or "target users"
-    problem = ctx.big_job or (ctx.pain_points[0] if ctx.pain_points else "the core job to be done")
-
-    if _is_cis(geo):
-        return [
-            f"сравнение конкурентов {category} цены и позиционирование {geo} 2025 2026",
-            f"{category} объём рынка рост тренды {geo} 2025 2026",
-            f"почему {segment} не может решить {problem} и не использует существующие решения {geo}",
-            f"отзывы и жалобы на {category} что не нравится пользователям 2025 2026",
-        ]
-    return [
-        f"comparison of {category} competitors pricing and positioning {geo} 2026",
-        f"{category} market size and growth trends {geo} 2025 2026",
-        f"why {segment} struggles with {problem} and does not use existing solutions {geo}",
-        f"honest reviews and complaints about {category} what users dislike 2025 2026",
-    ]
+def _build_queries(ctx: ContextData, skill_name: str = "full-analysis") -> list[str]:
+    """Load market-research queries from the skill's YAML config, templated with context."""
+    cfg = load_skill_queries(skill_name)
+    lang = "ru" if _is_cis(ctx.geography or "") else "en"
+    return render_query_group(
+        cfg, "market_research", lang,
+        category=ctx.description or "product",
+        geo=ctx.geography or "global",
+        segment=ctx.audience or "target users",
+        problem=ctx.big_job or (ctx.pain_points[0] if ctx.pain_points else "the core job"),
+    )
 
 
-def _build_review_queries(competitor_names: list[str], is_cis: bool) -> list[str]:
-    """Build Exa queries to find real user reviews for each competitor."""
+def _build_review_queries(competitor_names: list[str], is_cis: bool,
+                           skill_name: str = "full-analysis") -> list[str]:
+    """Load per-competitor review queries from the skill's YAML config."""
+    cfg = load_skill_queries(skill_name)
+    lang = "ru" if is_cis else "en"
     queries = []
     for name in competitor_names[:5]:
-        if is_cis:
-            queries.append(f"отзывы пользователей {name} обзор плюсы минусы 2025 2026")
-        else:
-            queries.append(f"{name} user reviews pros cons G2 Capterra ProductHunt 2025 2026")
+        rendered = render_query_group(cfg, "competitor_reviews", lang, competitor=name)
+        if rendered:
+            queries.append(rendered[0])
     return queries
 
 

@@ -177,6 +177,19 @@ class AnalysisReport(BaseModel):
 
 # ---------- run + entity ----------
 
+class PendingEditOut(BaseModel):
+    id: int
+    project_id: int
+    target: str
+    field: str
+    old_value: object = None
+    new_value: object = None
+    reason: str
+    status: str
+    created_at: datetime
+    resolved_at: datetime | None
+
+
 class RunOut(BaseModel):
     id: int
     project_id: int

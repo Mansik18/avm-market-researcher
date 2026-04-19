@@ -1,0 +1,32 @@
+# Exa search queries for the full-analysis skill.
+#
+# Two language variants: ru (CIS markets) and en (global).
+# Geography determines which variant is used (see _is_cis in analysis.py).
+#
+# Placeholders (str.format style):
+#   {category}  — product description (short)
+#   {geo}       — geography from context
+#   {segment}   — target audience / segment
+#   {problem}   — big_job or first pain point
+#   {competitor} — competitor name (used in review queries only)
+#
+# Each query must include a freshness marker ("2025 2026" or "2026") to
+# bias Exa toward recent results.
+
+# Core market research — 4 parallel searches in phase 1.
+market_research:
+  ru:
+    - "сравнение конкурентов {category} цены и позиционирование {geo} 2025 2026"
+    - "{category} объём рынка рост тренды {geo} 2025 2026"
+    - "почему {segment} не может решить {problem} и не использует существующие решения {geo}"
+    - "отзывы и жалобы на {category} что не нравится пользователям 2025 2026"
+  en:
+    - "comparison of {category} competitors pricing and positioning {geo} 2026"
+    - "{category} market size and growth trends {geo} 2025 2026"
+    - "why {segment} struggles with {problem} and does not use existing solutions {geo}"
+    - "honest reviews and complaints about {category} what users dislike 2025 2026"
+
+# Per-competitor review aggregation — 1 query per competitor in phase 1b.
+competitor_reviews:
+  ru: "отзывы пользователей {competitor} обзор плюсы минусы 2025 2026"
+  en: "{competitor} user reviews pros cons G2 Capterra ProductHunt 2025 2026"

@@ -5,10 +5,12 @@ import MessageInput from "../components/MessageInput";
 import ReportView from "../components/ReportView";
 import EntityCanvas from "../components/EntityCanvas";
 import RunStream from "../components/RunStream";
+import PendingEditsBanner from "../components/PendingEditsBanner";
 import {
   AnalysisReport,
   EntityDTO,
   HistoryMessage,
+  PendingEditDTO,
   Project,
   ProjectContextOut,
   api,
@@ -33,6 +35,7 @@ export default function Chat() {
   const [chatLoading, setChatLoading] = useState(false);
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [entities, setEntities] = useState<EntityDTO[]>([]);
+  const [pendingEdits, setPendingEdits] = useState<PendingEditDTO[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -100,6 +103,11 @@ export default function Chat() {
           setCurrentReportVersion(undefined);
           setEntities([]);
         }
+        // Load pending edits (agent proposals awaiting approval)
+        try {
+          const pe = await api.listPendingEdits(currentProjectId);
+          if (alive) setPendingEdits(pe);
+        } catch {}
         // If there's no history yet — trigger the cold-start greeting
         if (hist.messages.length === 0) {
           const res = await api.intakeTurn(currentProjectId, "");
@@ -154,6 +162,11 @@ export default function Chat() {
       };
       setMessages((prev) => [...prev, botMsg]);
       setContext(res.context);
+      // Refresh pending edits — agent may have proposed new changes
+      try {
+        const pe = await api.listPendingEdits(currentProjectId);
+        setPendingEdits(pe);
+      } catch {}
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка сети");
     } finally {
@@ -201,6 +214,18 @@ export default function Chat() {
   const onRunError = (msg: string) => {
     setError(msg);
     setActiveRunId(null);
+  };
+
+  const refreshPendingEdits = async () => {
+    if (currentProjectId == null) return;
+    try {
+      const [pe, ctx] = await Promise.all([
+        api.listPendingEdits(currentProjectId),
+        api.getContext(currentProjectId),
+      ]);
+      setPendingEdits(pe);
+      setContext(ctx);
+    } catch {}
   };
 
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
@@ -301,6 +326,14 @@ export default function Chat() {
               <div className="mx-3 sm:mx-6 mt-3 bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
                 {error}
               </div>
+            )}
+
+            {currentProjectId != null && pendingEdits.length > 0 && (
+              <PendingEditsBanner
+                projectId={currentProjectId}
+                edits={pendingEdits}
+                onChange={refreshPendingEdits}
+              />
             )}
 
             <ChatWindow

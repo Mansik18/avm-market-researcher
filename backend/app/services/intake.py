@@ -54,12 +54,26 @@ UPDATE_CONTEXT_SCHEMA: dict = {
 
 
 @dataclass
+class ProposedContextEdit:
+    field: str
+    old_value: object
+    new_value: object
+
+
+@dataclass
 class IntakeTurnResult:
     reply_text: str
     context: ContextData
     completeness: float
     ready_for_analysis: bool
     summary: str
+    # Populated only in discussion mode (after report): changes the agent proposes
+    # but did NOT merge — caller creates PendingEdit rows, user approves via UI.
+    proposed_edits: list[ProposedContextEdit] = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        if self.proposed_edits is None:
+            self.proposed_edits = []
 
 
 def _discussion_prompt(report_json: str) -> str:
@@ -70,15 +84,16 @@ def _discussion_prompt(report_json: str) -> str:
 ## Твои задачи:
 - Отвечай на вопросы по результатам анализа
 - Помогай разобраться в сегментах, рисках, экономике
-- Если пользователь даёт новую информацию (новые данные о клиентах, ценах, конкурентах) — обнови контекст через update_context
+- Если пользователь даёт новую информацию (новые данные о клиентах, ценах, конкурентах) — обнови соответствующие поля контекста через update_context. Изменения будут **предложены пользователю для подтверждения**, не применены автоматически.
 - Если новая информация существенна для выводов — предложи перезапустить анализ чтобы получить обновлённую версию отчёта
 - Будь конкретным, ссылайся на данные из отчёта
 
 ## Правила:
 - Короткие ответы. 2-5 предложений. Не лекции.
 - Не повторяй весь отчёт целиком — пользователь его уже видит.
-- Если пользователь дополняет контекст — обнови update_context и скажи что изменилось.
-- Когда рекомендуешь перезапустить анализ — скажи прямо: «Рекомендую перезапустить анализ — нажми кнопку выше. Новая версия учтёт эти данные.»
+- Меняй ТОЛЬКО те поля, для которых пользователь дал конкретную новую информацию. Не трогай остальные — оставляй как есть.
+- В `_assistant_reply` скажи прямо что именно ты предлагаешь изменить и почему. Например: "Обновляю: число платящих клиентов 5 → 30, цена → $50/мес. Это меняет экономику — стоит перезапустить анализ."
+- Когда рекомендуешь перезапустить анализ — «Рекомендую перезапустить глобальный анализ рынка — кнопка справа внизу. Новая версия учтёт эти данные.»
 
 ## Текущий отчёт (для справки):
 {report_json[:12000]}
@@ -165,8 +180,21 @@ async def run_intake_turn(
     ready = bool(tool_input.get("_ready_for_analysis") or False)
     summary = str(tool_input.get("_summary") or "")
 
-    new_ctx = _merge_context(current_context, tool_input)
+    if has_report:
+        # Discussion mode: don't merge silently — propose edits for user approval.
+        merged = _merge_context(current_context, tool_input)
+        proposed = _diff_context(current_context, merged)
+        return IntakeTurnResult(
+            reply_text=reply_text,
+            context=current_context,  # unchanged until user approves
+            completeness=completeness,
+            ready_for_analysis=ready,
+            summary=summary,
+            proposed_edits=proposed,
+        )
 
+    # Intake mode: merge immediately (same as before).
+    new_ctx = _merge_context(current_context, tool_input)
     return IntakeTurnResult(
         reply_text=reply_text,
         context=new_ctx,
@@ -174,3 +202,17 @@ async def run_intake_turn(
         ready_for_analysis=ready,
         summary=summary,
     )
+
+
+def _diff_context(before: ContextData, after: ContextData) -> list[ProposedContextEdit]:
+    """Return fields that differ between before and after. Only real changes."""
+    b = before.model_dump()
+    a = after.model_dump()
+    edits: list[ProposedContextEdit] = []
+    for field, new_value in a.items():
+        old_value = b.get(field)
+        if old_value == new_value:
+            continue
+        # Skip appending unchanged list items (lists are often extended, treat any diff as edit)
+        edits.append(ProposedContextEdit(field=field, old_value=old_value, new_value=new_value))
+    return edits

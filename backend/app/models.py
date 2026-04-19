@@ -60,6 +60,32 @@ class Run(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class PendingEdit(Base):
+    """A change proposed by the agent that requires user approval before applying.
+
+    Used in discussion mode: when the agent discovers new info that should update
+    project context (e.g., user mentions "we now have 30 paying customers"),
+    instead of silently merging, we stage it here and surface to UI for confirmation.
+    """
+    __tablename__ = "pending_edits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    # "context" = ProjectContext.data_json field update
+    # Future: "entity" = specific Entity row update
+    target: Mapped[str] = mapped_column(String(40), default="context")
+    # Field name being changed, e.g. "paying_customers" or "price"
+    field: Mapped[str] = mapped_column(String(80))
+    # JSON-serialized old value + new value for diff display
+    old_value_json: Mapped[str] = mapped_column(Text, default="null")
+    new_value_json: Mapped[str] = mapped_column(Text, default="null")
+    # Why the agent wants this change (surfaces in UI)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending|approved|rejected
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Entity(Base):
     __tablename__ = "entities"
 
