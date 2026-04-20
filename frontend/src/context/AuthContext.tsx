@@ -43,6 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setToken(null);
     setUser(null);
+    // Clear per-session UI state so the next user (or re-login) starts fresh
+    try {
+      localStorage.removeItem("avm_current_project");
+    } catch {}
   };
 
   return (

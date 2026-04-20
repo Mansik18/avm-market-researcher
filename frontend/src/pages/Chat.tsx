@@ -43,7 +43,13 @@ export default function Chat() {
     try {
       const data = await api.listProjects();
       setProjects(data);
-      if (data.length > 0 && currentProjectId == null) {
+      // If the stored currentProjectId doesn't belong to this user's list
+      // (e.g. after relogin with different account, or project was deleted
+      // in another tab), fall back to the first available project.
+      const ids = new Set(data.map((p) => p.id));
+      if (data.length === 0) {
+        setCurrentProjectId(null);
+      } else if (currentProjectId == null || !ids.has(currentProjectId)) {
         setCurrentProjectId(data[0].id);
       }
     } catch (e) {
